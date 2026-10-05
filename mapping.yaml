@@ -1,0 +1,37 @@
+# Réconciliation des référentiels — les conventions de nommage diffèrent entre outils.
+#
+# Depuis dashboard/reconciliation.py, un algorithme de matching flou (recouvrement de
+# tokens + préfixes + sous-chaînes) résout automatiquement les nouveaux actifs.
+# Ce fichier contient les correspondances vérifiées pour les actifs existants :
+#   - Overrides pour les cas sans lien lexical (supervision ↔ zabbix)
+#   - Overrides stables servant de fallback si Wazuh est indisponible
+#     (agents_by_name vide → auto-match impossible → on retombe sur ce YAML)
+#
+# Pour tout nouvel actif : ne pas l'ajouter ici sauf si le log affiche
+#   WARNING - Correspondance incertaine ... (score < 0.4)
+#   ou si l'auto-match pointe vers le mauvais actif.
+#
+# Noms iTop réels vérifiés le 2026-07-10 (get_vms).
+# Agents porteurs de CVE (index wazuh-states-vulnerabilities-*) :
+#   lpb-zabbix = 6597 · srv-bastion = 4245 · lpb-srv-admin-rdp = 605  (srvwazuh & OPNsense = 0)
+
+itop_to_wazuh:
+  LPC-VM-BASTION: srv-bastion          # auto-résolvable (token "bastion") — conservé comme fallback
+  LPC-VM-ADMIN-RDP: lpb-srv-admin-rdp  # auto-résolvable (tokens "admin"+"rdp") — conservé comme fallback
+  LPC-VM-WAZUH: srvwazuh               # auto-résolvable (sous-chaîne) — conservé comme fallback
+  LPC-VM-SUPERVISION: lpb-zabbix       # EXCEPTION : aucun lien lexical supervision/zabbix
+  lpb-srv-portainer-azure: lpb-srv-portainer-azure  # identique — conservé comme fallback
+  # OPNsense (0 CVE) — décommenter si besoin :
+  # LPB-FW1: OPNsense.localdomain
+
+ciso_aliases:
+  LPC-VM-BASTION: LPC-VM-BASTIO        # auto-résolvable (préfixe bastio ⊆ bastion) — conservé comme fallback
+  LPC-VM-ADMIN-RDP: lpb-srv-admin-rdp  # auto-résolvable — conservé comme fallback
+  LPC-VM-SUPERVISION: LPC-VM-ZABBIX    # EXCEPTION : aucun lien lexical
+  # OPNsense : LPB-FW1: LPC-VM-OPNSENSE (décommenter si besoin)
+
+# Actifs iTop volontairement exclus du scoring CISO (pas d'asset métier C/D/I).
+# Ces VMs ont un agent Wazuh et un match iTop mais aucun asset CISO correspondant.
+# Le score sera calculé sans C/D/I (CVSS seul) ou ignoré selon la config.
+ciso_excluded:
+  LPC-VM-WAZUH: "Serveur Wazuh (outil de monitoring interne) — pas d'actif métier CISO, exclusion intentionnelle (2026-07-13)"

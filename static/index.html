@@ -1,0 +1,1820 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scoring de vulnérabilités — LPB Conseil</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ── Design tokens — thème clair chaleureux, charte LPB (navy/or) ─── */
+:root {
+  /* z-index sémantique */
+  --z-sticky: 40; --z-backdrop: 60; --z-modal: 65; --z-toast: 70;
+
+  /* Surfaces — clair, propre, superposé */
+  --bg:     #eef1f6;   /* canvas */
+  --s1:     #ffffff;   /* cartes */
+  --s2:     #f3f5f9;   /* panneaux / survols */
+  --s3:     #e8ecf3;
+  --border: #e6eaf1;
+  --brd2:   #cfd6e2;
+
+  --ink1:   #16233f;   /* navy profond — titres */
+  --ink2:   #45516a;   /* texte secondaire (≈7:1 sur blanc) */
+  --ink3:   #6a7488;   /* labels atténués (≈4.6:1 sur blanc) */
+
+  --accent:   #1b2a4a; /* navy LPB — actions principales */
+  --accent-2: #2b4170; /* navy clair — dégradés / survol */
+  --acc2:     #c5a55a; /* or LPB — accents */
+  --acc2-deep:#a2801f; /* or profond — texte sur clair */
+
+  --crit:   #dc2626; --crit-bg: rgba(220,38,38,.10);
+  --elev:   #ea580c; --elev-bg: rgba(234,88,12,.11);
+  --mod:    #ca8a04; --mod-bg:  rgba(202,138,4,.13);
+  --fai:    #16a34a; --fai-bg:  rgba(22,163,74,.13);
+  --muted:  #64748b; --muted-bg:rgba(100,116,139,.13);
+
+  --green:  #059669;
+  --red:    #dc2626;
+
+  /* Ombres — douces, superposées */
+  --sh-sm: 0 1px 2px rgba(22,35,63,.05), 0 1px 3px rgba(22,35,63,.04);
+  --sh-md: 0 2px 5px rgba(22,35,63,.06), 0 8px 20px rgba(22,35,63,.08);
+  --sh-lg: 0 14px 40px rgba(22,35,63,.18);
+
+  /* Rayons */
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
+}
+
+/* ── Base ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--ink1);
+  font-family: 'Segoe UI', ui-sans-serif, system-ui, -apple-system, Roboto, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv05', 'ss01';
+}
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--brd2); border-radius: 6px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--ink3); }
+
+/* ── Accessibilité clavier (WCAG AA) ─────────────────────── */
+:focus-visible { outline: 2px solid var(--acc2); outline-offset: 2px; border-radius: 4px; }
+.topbar :focus-visible { outline-color: #f0dca0; }
+
+/* Sections repliables (Règles de calcul, Abonnements) */
+details > summary { transition: background 120ms, color 120ms; }
+details > summary:hover { background: var(--s2); color: var(--ink1) !important; }
+
+/* ── Topbar ────────────────────────────────────────────── */
+.topbar {
+  position: sticky; top: 0; z-index: var(--z-sticky);
+  background: linear-gradient(115deg, #14213c 0%, #1f3157 52%, #274169 100%);
+  border-bottom: 2px solid var(--acc2);
+  box-shadow: 0 3px 16px rgba(20,33,60,.28);
+}
+.topbar-inner {
+  max-width: 1320px; margin: 0 auto;
+  padding: 0 22px;
+  height: 62px;
+  display: flex; align-items: center; gap: 14px;
+}
+.brand { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  background: linear-gradient(140deg, #dcc179, var(--acc2));
+  display: flex; align-items: center; justify-content: center;
+  color: #16233f; font-size: 16px; font-weight: 800; line-height: 1;
+  box-shadow: 0 3px 10px rgba(197,165,90,.45), inset 0 1px 0 rgba(255,255,255,.4);
+}
+.brand-text { display: flex; flex-direction: column; line-height: 1.2; }
+.brand-title { font-size: 15.5px; font-weight: 700; color: #fff; letter-spacing: -.01em; }
+.brand-sub { font-size: 11px; color: rgba(226,234,248,.66); }
+.topbar-sep { flex: 1; }
+.topbar-right { display: flex; align-items: center; gap: 8px; font-size: 12px; color: rgba(226,234,248,.85); }
+.topbar #lastRun { color: rgba(226,234,248,.62) !important; }
+
+/* Boutons dans l'en-tête navy */
+.topbar .btn-secondary {
+  background: rgba(255,255,255,.10); color: #eaf0fb;
+  border: 1px solid rgba(255,255,255,.22);
+}
+.topbar .btn-secondary:hover { background: rgba(255,255,255,.20); color: #fff; border-color: rgba(255,255,255,.34); }
+.topbar .btn-secondary.is-baseline {
+  background: rgba(197,165,90,.22); color: #f3e2b6; border-color: rgba(197,165,90,.6);
+}
+.topbar .btn-primary { background: var(--acc2); color: #16233f; font-weight: 700; box-shadow: 0 2px 8px rgba(197,165,90,.35); }
+.topbar .btn-primary:hover { background: #d5b871; }
+
+/* ── Buttons ────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 600; cursor: pointer; border: none;
+  transition: transform 160ms cubic-bezier(.22,1,.36,1), background 160ms, color 160ms, box-shadow 160ms, opacity 160ms;
+  white-space: nowrap;
+}
+.btn-primary { background: var(--accent); color: #ffffff; box-shadow: 0 1px 2px rgba(22,35,63,.20); }
+.btn-primary:hover { background: var(--accent-2); transform: translateY(-1px); box-shadow: var(--sh-md); }
+.btn-primary:active { background: #14203a; color: #ffffff; transform: translateY(0); }
+.btn-primary:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.btn-secondary {
+  background: var(--s1); color: var(--ink2);
+  border: 1px solid var(--brd2);
+}
+.btn-secondary:hover { background: var(--s2); color: var(--ink1); border-color: var(--ink3); }
+.btn-secondary:disabled { opacity: .45; cursor: not-allowed; }
+.btn-secondary.is-baseline { color: var(--acc2-deep); border-color: var(--acc2); background: var(--mod-bg); }
+
+/* ── Chips ──────────────────────────────────────────────── */
+.chip {
+  display: inline-flex; align-items: center;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+}
+.chip-ok   { background: var(--fai-bg); color: #15803d; }
+.chip-warn { background: var(--elev-bg); color: #c2410c; }
+.chip-err  { background: var(--crit-bg); color: #b91c1c; }
+.chip-dim  { background: var(--muted-bg); color: #475569; }
+
+/* ── Badges ─────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .01em;
+}
+.b-critique  { background: var(--crit-bg);  color: #b91c1c; }
+.b-eleve     { background: var(--elev-bg);  color: #c2410c; }
+.b-modere    { background: var(--mod-bg);   color: #a16207; }
+.b-faible    { background: var(--fai-bg);   color: #15803d; }
+.b-non_evalue{ background: var(--muted-bg); color: #475569; }
+
+/* ── Layout ─────────────────────────────────────────────── */
+.page { max-width: 1320px; margin: 0 auto; padding: 22px 22px 56px; }
+
+/* ── Alert bar ───────────────────────────────────────────── */
+.alert-bar {
+  background: var(--crit-bg); border: 1px solid rgba(220,38,38,.25);
+  border-radius: var(--r-sm); padding: 11px 16px;
+  color: #b91c1c; font-size: 13px; margin-bottom: 16px;
+  box-shadow: var(--sh-sm);
+}
+
+/* ── Progress card ───────────────────────────────────────── */
+.progress-card {
+  background:
+    linear-gradient(180deg, rgba(197,165,90,.06), rgba(197,165,90,0) 60%),
+    var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 16px 20px; margin-bottom: 16px;
+  box-shadow: var(--sh-sm);
+}
+.progress-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.progress-label {
+  font-size: 12.5px; font-weight: 650; letter-spacing: 0;
+  color: var(--ink1);
+}
+.progress-ref { font-size: 11.5px; color: var(--ink3); }
+.progress-row {
+  display: grid; grid-template-columns: 1fr 1px 1fr 1px 1fr 1px 1fr; align-items: center;
+}
+.progress-divider { background: var(--border); height: 32px; }
+.progress-metric { padding: 0 16px; }
+.progress-metric:first-child { padding-left: 0; }
+.pm-val {
+  font-size: 24px; font-weight: 750; letter-spacing: -.025em; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.pm-lbl { font-size: 11.5px; color: var(--ink3); margin-top: 4px; }
+.pm-val-neg  { color: var(--green); }
+.pm-val-pos  { color: var(--red); }
+.pm-val-zero { color: var(--ink2); }
+.pm-resolved { color: var(--green); }
+.pm-new      { color: var(--red); }
+
+/* ── KPI tiles ───────────────────────────────────────────── */
+.kpi-strip {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  gap: 12px; margin-bottom: 16px;
+}
+.kpi-item {
+  background: var(--s1); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 15px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: var(--sh-sm);
+  transition: transform 180ms cubic-bezier(.22,1,.36,1), box-shadow 180ms;
+}
+.kpi-item:hover { transform: translateY(-3px); box-shadow: var(--sh-md); }
+.kpi-ico {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+}
+.kpi-ico svg { width: 19px; height: 19px; }
+.kpi-body { display: flex; flex-direction: column; gap: 3px; }
+.kpi-val { font-size: 27px; font-weight: 750; letter-spacing: -.025em; color: var(--ink1); font-variant-numeric: tabular-nums; line-height: 1; }
+.kpi-lbl { font-size: 11.5px; color: var(--ink3); font-weight: 500; }
+.kpi-red    { color: var(--crit); }
+.kpi-orange { color: var(--elev); }
+
+.ico-navy   { background: rgba(27,42,74,.10);  color: var(--accent); }
+.ico-teal   { background: rgba(13,148,136,.13); color: #0d9488; }
+.ico-amber  { background: var(--mod-bg);        color: #b45309; }
+.ico-red    { background: var(--crit-bg);       color: var(--crit); }
+.ico-orange { background: var(--elev-bg);       color: var(--elev); }
+
+/* ── Charts ──────────────────────────────────────────────── */
+.charts-grid {
+  display: grid; grid-template-columns: 1fr 1.4fr 1.6fr;
+  gap: 12px; margin-bottom: 16px;
+}
+.chart-card {
+  background: var(--s1); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 16px 18px;
+  box-shadow: var(--sh-sm); transition: box-shadow 180ms;
+}
+.chart-card:hover { box-shadow: var(--sh-md); }
+.card-label {
+  font-size: 12.5px; font-weight: 650; letter-spacing: 0;
+  color: var(--ink1); margin-bottom: 14px;
+}
+
+/* ── Table section ───────────────────────────────────────── */
+.table-card {
+  background: var(--s1); border: 1px solid var(--border);
+  border-radius: var(--r-md); overflow: hidden; box-shadow: var(--sh-sm);
+}
+.table-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+}
+.table-title { font-size: 13.5px; font-weight: 700; color: var(--ink1); }
+.table-controls { display: flex; gap: 7px; }
+
+.input-field {
+  background: var(--s1); border: 1px solid var(--brd2);
+  border-radius: 8px; padding: 7px 12px;
+  font-size: 12.5px; color: var(--ink1); outline: none;
+  transition: border-color 140ms, box-shadow 140ms;
+}
+.input-field::placeholder { color: var(--ink3); }
+.input-field:focus { border-color: var(--acc2); box-shadow: 0 0 0 3px rgba(197,165,90,.18); }
+
+.select-field {
+  background: var(--s1); border: 1px solid var(--brd2);
+  border-radius: 8px; padding: 7px 10px;
+  font-size: 12.5px; color: var(--ink1); outline: none; cursor: pointer;
+  transition: border-color 140ms, box-shadow 140ms;
+}
+.select-field:focus { border-color: var(--acc2); box-shadow: 0 0 0 3px rgba(197,165,90,.18); }
+
+table { width: 100%; border-collapse: collapse; }
+thead tr { border-bottom: 1px solid var(--border); background: var(--s2); }
+th {
+  padding: 11px 14px; text-align: left;
+  font-size: 11px; font-weight: 650; color: var(--ink3);
+  letter-spacing: 0; white-space: nowrap;
+}
+th.sortable { cursor: pointer; user-select: none; transition: color 120ms; }
+th.sortable:hover { color: var(--accent); }
+th.r { text-align: right; }
+th.c { text-align: center; }
+tbody tr { border-bottom: 1px solid rgba(230,234,241,.8); cursor: pointer; transition: background 120ms; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--s2); }
+td { padding: 11px 14px; vertical-align: middle; font-size: 12.5px; }
+.td-r { text-align: right; }
+.td-c { text-align: center; }
+
+.mono { font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace; font-size: 11px; }
+.cve-id  { color: #1d4ed8; font-family: ui-monospace, 'Fira Code', monospace; font-size: 11px; }
+a.cve-id{text-decoration:none;cursor:pointer}
+a.cve-id:hover{text-decoration:underline}
+
+.pkg     { color: var(--ink3); font-size: 10px; }
+.asset-n { color: var(--ink1); font-weight: 500; font-size: 12px; }
+.agent-n { color: var(--ink3); font-size: 10px; }
+.activity-n { color: var(--ink3); font-size: 10px; font-style: italic; }
+.sc-crit { color: var(--crit); font-weight: 700; }
+.sc-elev { color: var(--elev); font-weight: 700; }
+.sc-mod  { color: var(--mod);  font-weight: 600; }
+.sc-low  { color: var(--ink2); }
+
+.empty-state {
+  padding: 48px 20px; text-align: center;
+  color: var(--ink3); font-size: 13px; line-height: 1.7;
+}
+.empty-state strong { display: block; color: var(--ink2); font-size: 14px; margin-bottom: 5px; }
+
+.table-note {
+  text-align: center; padding: 10px; font-size: 11px;
+  color: var(--ink3); border-top: 1px solid var(--border);
+}
+
+/* ── Modal ───────────────────────────────────────────────── */
+#modal {
+  background: var(--s1); border: 1px solid var(--brd2);
+  border-radius: var(--r-lg); padding: 0;
+  max-width: 660px; width: calc(100vw - 32px); max-height: 86vh;
+  overflow: hidden; color: var(--ink1);
+  flex-direction: column; box-shadow: var(--sh-lg);
+}
+/* display uniquement quand ouvert — sinon `display:flex` écrase le
+   `display:none` natif du <dialog> fermé (fantôme en bas de page) */
+#modal[open] { display: flex; }
+#modal::backdrop { background: rgba(20,33,60,.45); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.modal-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 20px 20px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.modal-head h3 { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.modal-close {
+  background: none; border: none; cursor: pointer;
+  color: var(--ink3); font-size: 18px; line-height: 1; padding: 2px 4px;
+  transition: color 120ms; flex-shrink: 0;
+}
+.modal-close:hover { color: var(--ink1); }
+
+.modal-meta {
+  padding: 10px 20px; font-size: 12px; color: var(--ink2);
+  background: var(--s2); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.modal-formula {
+  padding: 11px 20px; font-size: 12.5px; color: var(--ink2);
+  background: var(--s2); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.formula-hi { color: var(--accent); font-weight: 600; }
+
+.modal-tabs {
+  display: flex; padding: 0 18px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.tab-btn {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  padding: 9px 12px; font-size: 12px; font-weight: 500;
+  color: var(--ink3); cursor: pointer; transition: color 120ms;
+  margin-bottom: -1px;
+}
+.tab-btn:hover { color: var(--ink1); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.modal-body { overflow-y: auto; flex: 1; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.vuln-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 20px; border-bottom: 1px solid rgba(230,234,241,.8); font-size: 12.5px;
+  transition: background 120ms;
+}
+.vuln-row:hover { background: var(--s2); }
+.vuln-row:last-child { border-bottom: none; }
+.vuln-cve { color: #1d4ed8; font-family: ui-monospace, monospace; font-size: 11px; }
+.vuln-pkg { color: var(--ink3); font-size: 10px; }
+.vuln-score { font-weight: 700; font-family: ui-monospace, monospace; font-size: 11px; }
+
+.tag-resolved {
+  font-size: 9px; background: var(--fai-bg); color: var(--fai);
+  padding: 1px 5px; border-radius: 2px; font-weight: 700; letter-spacing: .04em;
+}
+.tag-new {
+  font-size: 9px; background: var(--crit-bg); color: var(--red);
+  padding: 1px 5px; border-radius: 2px; font-weight: 700; letter-spacing: .04em;
+}
+
+/* ── Risk matrix cells ───────────────────────────────────── */
+.matrix-cell {
+  position: relative;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  min-height: 80px;
+  transition: filter 100ms;
+  cursor: default;
+}
+.matrix-cell:hover { filter: brightness(1.18); }
+
+/* ── Risk modal ──────────────────────────────────────────── */
+#riskModal {
+  background: var(--s1); border: 1px solid var(--brd2);
+  border-radius: var(--r-lg); padding: 0;
+  max-width: 680px; width: calc(100vw - 32px); max-height: 86vh;
+  overflow: hidden; color: var(--ink1);
+  flex-direction: column; box-shadow: var(--sh-lg);
+}
+#riskModal[open] { display: flex; }
+#riskModal::backdrop { background: rgba(20,33,60,.45); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.risk-journal-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 18px; border-bottom: 1px solid rgba(226,232,240,.7);
+  font-size: 12px;
+}
+.risk-journal-row:last-child { border-bottom: none; }
+.rj-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px;
+}
+
+/* ── Mode démo ───────────────────────────────────────────── */
+@keyframes demoPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); }
+  50%      { box-shadow: 0 0 0 14px rgba(220,38,38,0); }
+}
+#demoAlert {
+  position: fixed; top: 62px; left: 50%; transform: translateX(-50%);
+  z-index: 70; display: none; cursor: pointer;
+  background: #dc2626; color: #fff;
+  border-radius: 8px; padding: 10px 20px;
+  font-size: 12.5px; font-weight: 600;
+  max-width: calc(100vw - 40px);
+  animation: demoPulse 1.5s infinite;
+}
+#demoAlert.ok { background: #059669; animation: none; }
+#demoPanel {
+  position: fixed; bottom: 18px; right: 18px; z-index: 65;
+  width: 300px; background: var(--s1);
+  border: 1px solid var(--brd2); border-radius: 10px;
+  box-shadow: 0 10px 34px rgba(27,42,74,.20);
+  display: none;
+}
+#demoPanel.open { display: block; }
+.demo-btn { width: 100%; margin-top: 6px; justify-content: center; }
+.demo-range { width: 100%; accent-color: var(--accent); }
+.demo-lbl {
+  font-size: 10px; color: var(--ink3); font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em;
+}
+
+/* ── Skeletons (chargement initial) ──────────────────────── */
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.skeleton {
+  color: transparent !important;
+  background: linear-gradient(90deg, var(--s3) 25%, #eef2f8 50%, var(--s3) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 6px; user-select: none; pointer-events: none;
+}
+.kpi-val.skeleton { display: inline-block; min-width: 62px; height: 27px; }
+.chart-wrap { position: relative; }
+.chart-skel { position: absolute; inset: 0; border-radius: 8px; }
+
+/* ── Modal entrance ──────────────────────────────────────── */
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(10px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
+#modal[open], #riskModal[open] { animation: modalIn 190ms cubic-bezier(.22,1,.36,1); }
+#modal[open]::backdrop, #riskModal[open]::backdrop { animation: backdropIn 190ms ease-out; }
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 1080px) {
+  .charts-grid { grid-template-columns: 1fr 1fr; }
+  .kpi-strip   { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 720px) {
+  .charts-grid { grid-template-columns: 1fr; }
+  .kpi-strip   { grid-template-columns: repeat(2, 1fr); }
+  .topbar-inner { height: auto; padding: 10px 16px; flex-wrap: wrap; }
+  .topbar-right { flex-wrap: wrap; }
+  .brand-sub { display: none; }
+}
+
+/* ── Reduced motion ──────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ TOPBAR ═══════════════════════════════════════════════ -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark">▲</span>
+      <div class="brand-text">
+        <span class="brand-title">Scoring de vulnérabilités</span>
+        <span class="brand-sub">POC LPB Conseil · CVSS × (0,7·CDI + 0,9·VM)</span>
+      </div>
+    </div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-right">
+      <span id="lastRun" style="color:var(--ink3)">—</span>
+      <span id="runStatus" class="chip chip-dim">…</span>
+      <button id="btnBaseline" class="btn btn-secondary" onclick="pinBaseline()">⚑ Figer comme référence</button>
+      <button id="btnWatch" class="btn btn-secondary" onclick="switchView('watch')" style="position:relative">
+        ⚲ Veille <span id="watchBadge" style="display:none;position:absolute;top:-6px;right:-6px;background:var(--crit);color:#fff;font-size:9px;font-weight:700;min-width:16px;height:16px;line-height:16px;text-align:center;border-radius:8px;padding:0 3px"></span>
+      </button>
+      <button id="btnMatrix" class="btn btn-secondary" onclick="switchView('matrix')">⬡ Matrice risques</button>
+      <button id="btnDemo" class="btn btn-secondary" onclick="toggleDemo()" title="Mode démo">🎬</button>
+      <button id="btnCollect" class="btn btn-primary" onclick="triggerCollect()">⟳ Collecter</button>
+    </div>
+  </div>
+</header>
+
+<!-- ═══ PAGE ══════════════════════════════════════════════════ -->
+<div class="page">
+
+  <!-- Alert -->
+  <div id="alertBar" class="alert-bar" style="display:none"></div>
+
+  <!-- ══ VUE MATRICE DE RISQUES ══════════════════════════════════ -->
+  <div id="matrixView" style="display:none">
+
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:18px;font-weight:700;color:var(--ink1);letter-spacing:-.01em">Matrice de risques EBIOS RM — LPB Conseil</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px" id="matrixSubtitle">Chargement…</div>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary" onclick="switchView('vulns')">← Vulnérabilités</button>
+    </div>
+
+    <!-- Légende niveaux -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--ink3);margin-right:4px;align-self:center">Niveau :</span>
+      <span class="chip" style="background:rgba(220,38,38,.12);color:#dc2626">Critique</span>
+      <span class="chip" style="background:rgba(234,88,12,.12);color:#ea580c">Élevé</span>
+      <span class="chip" style="background:rgba(202,138,4,.12);color:#ca8a04">Modéré</span>
+      <span class="chip" style="background:rgba(22,163,74,.12);color:#16a34a">Faible</span>
+      <span style="font-size:11px;color:var(--ink3);margin-left:12px;align-self:center">● = position courante · ○ = origine EBIOS · ✦ = plancher G2 actif</span>
+    </div>
+
+    <!-- Matrice 4×4 -->
+    <div style="position:relative;display:inline-block;width:100%;max-width:640px">
+      <!-- Labels axe Y (gravité) -->
+      <div style="position:absolute;left:-52px;top:0;height:100%;display:flex;flex-direction:column;justify-content:space-around;align-items:flex-end;width:48px">
+        <span style="font-size:10px;color:var(--ink3)">G=4</span>
+        <span style="font-size:10px;color:var(--ink3)">G=3</span>
+        <span style="font-size:10px;color:var(--ink3)">G=2</span>
+        <span style="font-size:10px;color:var(--ink3)">G=1</span>
+      </div>
+      <div id="matrixGrid" style="
+        display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(4,80px);
+        border:1px solid var(--border);border-radius:6px;overflow:hidden;position:relative
+      ">
+        <!-- Cellules générées par JS -->
+      </div>
+      <!-- Labels axe X (vraisemblance) -->
+      <div style="display:flex;justify-content:space-around;margin-top:6px;padding:0 2px">
+        <span style="font-size:10px;color:var(--ink3)">V=1</span>
+        <span style="font-size:10px;color:var(--ink3)">V=2</span>
+        <span style="font-size:10px;color:var(--ink3)">V=3</span>
+        <span style="font-size:10px;color:var(--ink3)">V=4</span>
+      </div>
+      <div style="text-align:center;font-size:10px;color:var(--ink3);margin-top:2px">← Vraisemblance →</div>
+    </div>
+
+    <!-- Note V/G inférée -->
+    <div id="matrixInferredNote" style="display:none;margin-top:14px;padding:10px 14px;background:var(--s2);border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--ink2)">
+      ⚠ Certains scénarios affichent une position <strong>inférée</strong> (V/G déduits du niveau textuel CISO, non saisis explicitement).
+      À valider avec Fadel — décision 5 du cadrage V2.
+    </div>
+
+    <!-- Scénarios incomplets -->
+    <div id="matrixIncompleteList" style="display:none;margin-top:14px"></div>
+
+    <!-- Vignette règles de calcul (G3) -->
+    <details style="margin-top:18px;border:1px solid var(--border);border-radius:6px;background:var(--s1)">
+      <summary style="padding:10px 14px;cursor:pointer;font-size:12px;font-weight:600;color:var(--ink2);user-select:none">
+        ⚙ Règles de calcul (risk_tuning.yaml)
+      </summary>
+      <div id="tuningDisplay" style="padding:12px 14px;font-size:11px;color:var(--ink3);white-space:pre;font-family:monospace;overflow:auto">Chargement…</div>
+    </details>
+  </div>
+  <!-- ══ FIN VUE MATRICE ═══════════════════════════════════════ -->
+
+  <!-- ══ VUE VEILLE CVE (NVD) ════════════════════════════════════ -->
+  <div id="watchView" style="display:none">
+
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:18px;font-weight:700;color:var(--ink1);letter-spacing:-.01em">Veille CVE — actifs SaaS &amp; produits</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px" id="watchSubtitle">Chargement…</div>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary" onclick="markAllSeen()">✓ Tout marquer lu</button>
+      <button class="btn btn-primary" onclick="triggerWatch()" id="btnWatchRun">⟳ Lancer la veille</button>
+      <button class="btn btn-secondary" onclick="switchView('vulns')">← Vulnérabilités</button>
+    </div>
+
+    <!-- Abonnements -->
+    <details style="margin-bottom:14px;border:1px solid var(--border);border-radius:6px;background:var(--s1)">
+      <summary style="padding:10px 14px;cursor:pointer;font-size:12px;font-weight:600;color:var(--ink2);user-select:none">
+        ⚙ Abonnements (<span id="watchItemCount">…</span> actifs surveillés — watch.yaml)
+      </summary>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Actif</th><th>Requête NVD</th><th>Dernier poll</th><th>Statut</th><th class="r">News</th><th class="r">Non lues</th>
+          </tr></thead>
+          <tbody id="watchStatusBody"></tbody>
+        </table>
+      </div>
+    </details>
+
+    <!-- Flux de news -->
+    <div class="table-card">
+      <div class="table-toolbar">
+        <span class="table-title" id="watchNewsTitle">Actualité CVE</span>
+        <div class="table-controls">
+          <select id="watchAssetFilter" class="select-field" onchange="renderWatchNews()">
+            <option value="">Tous les actifs</option>
+          </select>
+          <select id="watchSevFilter" class="select-field" onchange="renderWatchNews()">
+            <option value="">Toutes sévérités</option>
+            <option value="CRITICAL">Critique</option>
+            <option value="HIGH">Élevée</option>
+            <option value="MEDIUM">Moyenne</option>
+            <option value="LOW">Faible</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink2);cursor:pointer">
+            <input type="checkbox" id="watchUnseenOnly" onchange="renderWatchNews()"> Non lues
+          </label>
+        </div>
+      </div>
+      <div id="watchNewsList"></div>
+      <div id="watchEmpty" class="empty-state" style="display:none">
+        <strong>Aucune news</strong>
+        <span>Lancer la veille ou attendre le prochain cycle horaire.</span>
+      </div>
+    </div>
+  </div>
+  <!-- ══ FIN VUE VEILLE ══════════════════════════════════════════ -->
+
+  <!-- ══ VUE VULNÉRABILITÉS (existante, wrappée) ═════════════════ -->
+  <div id="vulnsView">
+
+  <!-- Progress -->
+  <div id="progressSection" class="progress-card" style="display:none">
+    <div class="progress-header">
+      <span class="progress-label">Remédiation vs référence</span>
+      <span id="refDate" class="progress-ref">—</span>
+    </div>
+    <div class="progress-row">
+      <div class="progress-metric">
+        <div id="pDeltaScore" class="pm-val pm-val-zero">—</div>
+        <div class="pm-lbl">Δ score global</div>
+      </div>
+      <div class="progress-divider"></div>
+      <div class="progress-metric">
+        <div id="pDeltaPct" class="pm-val pm-val-zero">—</div>
+        <div class="pm-lbl">Variation</div>
+      </div>
+      <div class="progress-divider"></div>
+      <div class="progress-metric">
+        <div id="pResolved" class="pm-val pm-resolved">—</div>
+        <div class="pm-lbl">CVEs résolues</div>
+      </div>
+      <div class="progress-divider"></div>
+      <div class="progress-metric">
+        <div id="pNew" class="pm-val pm-new">—</div>
+        <div class="pm-lbl">Nouvelles CVEs</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI tiles -->
+  <div class="kpi-strip">
+    <div class="kpi-item">
+      <div class="kpi-ico ico-navy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      </div>
+      <div class="kpi-body">
+        <span class="kpi-val skeleton" id="kAssets">–</span>
+        <span class="kpi-lbl">Actifs inventoriés (iTop)</span>
+      </div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-ico ico-teal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+      </div>
+      <div class="kpi-body">
+        <span class="kpi-val skeleton" id="kMonitored">–</span>
+        <span class="kpi-lbl">Surveillés (Wazuh)</span>
+      </div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-ico ico-amber">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+      </div>
+      <div class="kpi-body">
+        <span class="kpi-val skeleton" id="kVulns">–</span>
+        <span class="kpi-lbl">CVEs actives</span>
+      </div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-ico ico-red">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+      </div>
+      <div class="kpi-body">
+        <span class="kpi-val kpi-red skeleton" id="kMax">–</span>
+        <span class="kpi-lbl">Score max <span style="color:var(--ink3);font-weight:400">/120</span></span>
+      </div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-ico ico-orange">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+      </div>
+      <div class="kpi-body">
+        <span class="kpi-val kpi-orange skeleton" id="kAvg">–</span>
+        <span class="kpi-lbl">Score moyen</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="card-label">Répartition par criticité</div>
+      <div class="chart-wrap"><canvas id="chartBuckets" height="190"></canvas><div class="chart-skel skeleton"></div></div>
+    </div>
+    <div class="chart-card">
+      <div class="card-label">Top 10 — score le plus élevé</div>
+      <div class="chart-wrap"><canvas id="chartTop" height="190"></canvas><div class="chart-skel skeleton"></div></div>
+    </div>
+    <div class="chart-card">
+      <div class="card-label">Tendance — score max / moyen par collecte</div>
+      <div class="chart-wrap"><canvas id="chartHistory" height="190"></canvas><div class="chart-skel skeleton"></div></div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-card">
+    <div class="table-toolbar">
+      <span class="table-title" id="tableTitle">Vulnérabilités par actif</span>
+      <div class="table-controls">
+        <input id="search" class="input-field" style="width:200px" placeholder="CVE, paquet…" oninput="renderTable()">
+        <select id="assetFilter" class="select-field" onchange="renderTable()">
+          <option value="">Tous les actifs</option>
+        </select>
+        <select id="cvssFilter" class="select-field" onchange="renderTable()">
+          <option value="">Tous CVSS</option>
+          <option value="9">CVSS ≥ 9.0</option>
+          <option value="7">CVSS ≥ 7.0</option>
+          <option value="4">CVSS ≥ 4.0</option>
+        </select>
+        <select id="bucketFilter" class="select-field" onchange="renderTable()">
+          <option value="">Toutes criticités</option>
+          <option value="critique">Critique</option>
+          <option value="eleve">Élevé</option>
+          <option value="modere">Modéré</option>
+          <option value="faible">Faible</option>
+          <option value="non_evalue">Non évalué</option>
+        </select>
+        <select id="profileFilter" class="select-field" onchange="switchProfile()"
+                title="Profil de seuils de criticité — voir la note de calibrage">
+          <option value="rapport">Seuils absolus (rapport)</option>
+          <option value="percentile">Seuils relatifs au parc</option>
+        </select>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortBy('asset')">Actif<span id="si-asset"></span></th>
+            <th class="sortable" onclick="sortBy('cve')">CVE<span id="si-cve"></span></th>
+            <th>Paquet</th>
+            <th class="sortable r" onclick="sortBy('cvss')">CVSS<span id="si-cvss"></span></th>
+            <th class="c" title="Criticité actif support (C/D/I) et valeur métier portée (VM)">C·D·I / VM</th>
+            <th class="sortable r" onclick="sortBy('score')">Score<span id="si-score"></span></th>
+            <th class="sortable c" onclick="sortBy('exposure')"
+                title="Facteur d'exposition réseau (exposure.yaml) — 1,00 si inconnu">E<span id="si-exposure"></span></th>
+            <th class="sortable r" onclick="sortBy('score_exp')"
+                title="Score V1.2 = score × facteur d'exposition">Score ×E<span id="si-score_exp"></span></th>
+            <th>Criticité</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div id="emptyMsg" class="empty-state" style="display:none">
+        <strong id="emptyTitle">Aucun résultat</strong>
+        <span id="emptyDesc"></span>
+      </div>
+      <div id="tableNote" class="table-note" style="display:none"></div>
+    </div>
+  </div>
+
+  <footer style="text-align:center;margin-top:32px;padding:20px 0 0;font-size:11px;color:var(--ink3);border-top:1px solid var(--border)">
+    POC PFE — Mattéo Trémisi · LPB Conseil / CESI Strasbourg 2026 · iTop · Wazuh · CISO Assistant
+  </footer>
+  </div><!-- fin vulnsView -->
+</div>
+
+<!-- ═══ MODAL ═════════════════════════════════════════════════ -->
+<dialog id="modal">
+  <div class="modal-head">
+    <h3 id="mTitle">—</h3>
+    <button class="modal-close" onclick="closeModal()">×</button>
+  </div>
+  <div class="modal-meta" id="mMeta"></div>
+  <div class="modal-formula" id="mFormula"></div>
+  <div class="modal-tabs">
+    <button class="tab-btn active" data-tab="persist" onclick="switchTab('persist')">Persistantes <span id="tPersist" style="color:var(--ink3)"></span></button>
+    <button class="tab-btn" data-tab="resolved" onclick="switchTab('resolved')">Résolues <span id="tResolved" style="color:var(--green)"></span></button>
+    <button class="tab-btn" data-tab="new" onclick="switchTab('new')">Nouvelles <span id="tNew" style="color:var(--red)"></span></button>
+  </div>
+  <div class="modal-body">
+    <div id="tab-persist" class="tab-panel active"></div>
+    <div id="tab-resolved" class="tab-panel"></div>
+    <div id="tab-new" class="tab-panel"></div>
+  </div>
+</dialog>
+
+<!-- ═══ MODE DÉMO ═══════════════════════════════════════════ -->
+<div id="demoAlert" onclick="demoAlertClick()"></div>
+
+<div id="demoPanel">
+  <div style="padding:11px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+    <strong style="font-size:12px">🎬 Mode démo</strong>
+    <button class="modal-close" onclick="toggleDemo()">×</button>
+  </div>
+  <div style="padding:12px 14px">
+    <label class="demo-lbl">Scénario cible</label>
+    <select id="demoScenario" class="select-field" style="width:100%;margin-top:4px"></select>
+
+    <button class="btn btn-primary demo-btn" onclick="demoInject()">🚨 Injecter une CVE critique</button>
+    <button class="btn btn-secondary demo-btn" onclick="demoPatch()">🩹 Déployer le correctif (scan OK)</button>
+    <button class="btn btn-secondary demo-btn" onclick="demoReset()">↺ Réinitialiser la démo</button>
+
+    <div style="border-top:1px solid var(--border);margin:14px -14px 0;padding:11px 14px 2px">
+      <label class="demo-lbl">Simulateur — et si ?</label>
+      <div style="margin-top:8px;font-size:11px;color:var(--ink2)">
+        CVSS <span id="wiCvssV" class="mono" style="color:var(--ink1);font-weight:700">7.8</span>
+        <input type="range" id="wiCvss" class="demo-range" min="0" max="10" step="0.1" value="7.8" oninput="wiUpdate()">
+        Criticité actif (C+D+I) <span id="wiCdiV" class="mono" style="color:var(--ink1);font-weight:700">7</span>
+        <input type="range" id="wiCdi" class="demo-range" min="0" max="12" step="1" value="7" oninput="wiUpdate()">
+        Valeur métier (VM) <span id="wiVmV" class="mono" style="color:var(--ink1);font-weight:700">2</span>
+        <input type="range" id="wiVm" class="demo-range" min="0" max="4" step="0.5" value="2" oninput="wiUpdate()">
+      </div>
+      <div id="wiOut" style="margin:8px 0 10px;font-size:13px;font-weight:700"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ RISK MODAL ══════════════════════════════════════════ -->
+<dialog id="riskModal">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
+    <div>
+      <h3 id="rmTitle" style="font-size:15px;font-weight:700;letter-spacing:-.01em">—</h3>
+      <div id="rmMeta" style="font-size:11px;color:var(--ink2);margin-top:4px"></div>
+    </div>
+    <button class="modal-close" onclick="closeRiskModal()">×</button>
+  </div>
+  <div id="rmPosition" style="padding:14px 18px;background:var(--bg);font-size:12px;flex-shrink:0"></div>
+</dialog>
+
+<script>
+/* ── Config ─────────────────────────────────────── */
+const BUCKET_LABEL = { critique:"Critique", eleve:"Élevé", modere:"Modéré", faible:"Faible", non_evalue:"Non évalué" };
+const BUCKET_COLOR = { critique:"#dc2626", eleve:"#ea580c", modere:"#ca8a04", faible:"#16a34a", non_evalue:"#94a3b8" };
+
+Chart.defaults.color = "#45516a";
+Chart.defaults.borderColor = "#e6eaf1";
+Chart.defaults.font.family = "'Segoe UI', ui-sans-serif, system-ui, -apple-system, Arial, sans-serif";
+Chart.defaults.font.size = 11;
+
+/* ── State ──────────────────────────────────────── */
+let allRows = [], sortKey = "score", sortDir = -1;
+let seuilsInfo = null;
+
+/* ── Exposition réseau et profils de seuils ─────────────────── */
+function switchProfile() { loadAll(); }
+
+function expoCell(r) {
+  if (r.exposure == null) return "—";
+  const v = r.exposure.toFixed(2).replace(".", ",");
+  if (r.exposure > 1) return `<span style="color:${BUCKET_COLOR.critique}">×${v}</span>`;
+  if (r.exposure < 1) return `<span style="color:${BUCKET_COLOR.faible}">×${v}</span>`;
+  return `<span style="opacity:.5">×${v}</span>`;
+}
+
+function criticiteCell(r) {
+  const a = r.bucket_profil, b = r.bucket_exp;
+  if (!b || a === b) return badge(a);
+  return `${badge(a)}<span style="opacity:.45;margin:0 3px">→</span>${badge(b)}`;
+}
+
+function renderSeuilsNote() {
+  const note = document.getElementById("tableNote");
+  if (!note || !seuilsInfo) return;
+  const s = seuilsInfo.sans_exposition, e = seuilsInfo.avec_exposition;
+  const f = o => `critique ≥ ${o.seuils.critique} · élevé ≥ ${o.seuils.eleve} · modéré ≥ ${o.seuils.modere}`;
+  const pct = s.type === "percentile"
+    ? ` (percentiles p${s.percentiles.critique}/p${s.percentiles.eleve}/p${s.percentiles.modere} sur ${fmtNum(s.population)} scores du cycle)`
+    : " (bornes absolues sur l'échelle 0–120 du rapport)";
+  note.style.display = "";
+  note.innerHTML =
+    `<strong>${s.label}</strong>${pct}<br>` +
+    `Sans exposition : ${f(s)} — avec exposition : ${f(e)}.<br>` +
+    `<span style="opacity:.75">${s.justification || ""}</span>`;
+}
+let progressData = null, charts = {};
+
+/* ── API helper ─────────────────────────────────── */
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+/* ── Formatters ─────────────────────────────────── */
+function fmtDate(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("fr-FR",
+    {day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit"});
+}
+function fmtNum(n) {
+  if (n == null) return "–";
+  return typeof n === "number" ? n.toLocaleString("fr-FR") : n;
+}
+function badge(b) {
+  return `<span class="badge b-${b}">${BUCKET_LABEL[b] ?? b}</span>`;
+}
+function cdiCell(r) {
+  if (r.c == null || r.d == null || r.i == null)
+    return `<span style="color:var(--ink3)">—</span>`;
+  const vm = r.vm != null
+    ? ` <span class="mono" style="color:var(--acc2);font-weight:700" title="Criticité de la valeur métier portée">/ ${r.vm}</span>`
+    : ` <span class="mono" style="color:var(--ink3)" title="Valeur métier non évaluée — repli formule V1">/ –</span>`;
+  return `<span class="mono" style="color:var(--ink2)">${r.c}·${r.d}·${r.i}</span>${vm}`;
+}
+function scoreClass(s, avecExposition = false) {
+  if (s == null) return "";
+  const d = { critique: 60, eleve: 40, modere: 20 };
+  const t = seuilsInfo
+    ? (avecExposition ? seuilsInfo.avec_exposition : seuilsInfo.sans_exposition).seuils
+    : d;
+  if (s >= t.critique) return "sc-crit";
+  if (s >= t.eleve) return "sc-elev";
+  if (s >= t.modere) return "sc-mod";
+  return "sc-low";
+}
+
+/* ── Skeletons de chargement ────────────────────── */
+function clearKpiSkeletons() {
+  ["kAssets","kMonitored","kVulns","kMax","kAvg"].forEach(id => {
+    document.getElementById(id)?.classList.remove("skeleton");
+  });
+}
+function hideChartSkeletons() {
+  document.querySelectorAll(".chart-skel").forEach(s => { s.style.display = "none"; });
+}
+
+/* ── Load ───────────────────────────────────────── */
+async function loadAll() {
+  try {
+    const meta = await api("/api/meta");
+    const run  = meta.last_run;
+
+    if (!run) {
+      document.getElementById("lastRun").textContent = "Aucune collecte";
+      const st = document.getElementById("runStatus");
+      st.textContent = meta.collecting ? "en cours…" : "—";
+      st.className = "chip chip-dim";
+      // Pas de collecte en cours → afficher les valeurs vides plutôt qu'un shimmer figé
+      if (!meta.collecting) { clearKpiSkeletons(); hideChartSkeletons(); }
+      return;
+    }
+
+    document.getElementById("lastRun").textContent = fmtDate(run.finished_at);
+    const st = document.getElementById("runStatus");
+    if (run.status === "ok") {
+      st.textContent = "OK"; st.className = "chip chip-ok";
+    } else if (run.status === "partial") {
+      st.textContent = "partiel"; st.className = "chip chip-warn";
+    } else {
+      st.textContent = run.status; st.className = "chip chip-err";
+    }
+
+    const bar = document.getElementById("alertBar");
+    if (run.status !== "ok" && run.message) {
+      bar.textContent = "⚠ Collecte partielle — " + run.message;
+      bar.style.display = "";
+    } else {
+      bar.style.display = "none";
+    }
+
+    const btnB = document.getElementById("btnBaseline");
+    if (run.is_baseline) {
+      btnB.textContent = "✓ Référence actuelle";
+      btnB.className = "btn btn-secondary is-baseline";
+      btnB.disabled = true;
+    } else {
+      btnB.textContent = "⚑ Figer comme référence";
+      btnB.className = "btn btn-secondary";
+      btnB.disabled = false;
+    }
+
+    const prof = document.getElementById("profileFilter")?.value || "rapport";
+    const [summary, scores, history, progress] = await Promise.all([
+      api("/api/summary"), api(`/api/scores?profile=${prof}`),
+      api("/api/history"), api("/api/progress")
+    ]);
+
+    progressData = progress;
+    allRows = scores.lignes;
+    seuilsInfo = scores.seuils;
+    renderSeuilsNote();
+
+    populateAssetFilter();
+    renderProgress(progress);
+    renderKpis(summary);
+    renderCharts(summary, allRows, history);
+    renderTable();
+
+  } catch (e) { console.warn("loadAll:", e.message); }
+}
+
+/* ── Progress ───────────────────────────────────── */
+function renderProgress(p) {
+  const sec = document.getElementById("progressSection");
+  if (!p || !p.baseline || !p.delta || !p.current || p.baseline.id === p.current.id) {
+    sec.style.display = "none"; return;
+  }
+  sec.style.display = "";
+  document.getElementById("refDate").textContent =
+    "Référence : " + fmtDate(p.baseline.finished_at);
+
+  const { delta_score, delta_pct, resolved_count, new_count } = p.delta;
+
+  const ds = document.getElementById("pDeltaScore");
+  ds.textContent = (delta_score > 0 ? "+" : "") + fmtNum(delta_score) + " pts";
+  ds.className = "pm-val " + (delta_score < 0 ? "pm-val-neg" : delta_score > 0 ? "pm-val-pos" : "pm-val-zero");
+
+  const dp = document.getElementById("pDeltaPct");
+  dp.textContent = (delta_pct > 0 ? "+" : "") + delta_pct + " %";
+  dp.className = "pm-val " + (delta_pct < 0 ? "pm-val-neg" : delta_pct > 0 ? "pm-val-pos" : "pm-val-zero");
+
+  document.getElementById("pResolved").textContent = fmtNum(resolved_count);
+  document.getElementById("pNew").textContent = fmtNum(new_count);
+}
+
+/* ── KPIs ───────────────────────────────────────── */
+function renderKpis(s) {
+  document.getElementById("kAssets").textContent   = fmtNum(s.assets.total);
+  document.getElementById("kMonitored").textContent = fmtNum(s.assets.monitored);
+  document.getElementById("kVulns").textContent    = fmtNum(s.kpi.vulns);
+  document.getElementById("kMax").textContent      = s.kpi.max_score ?? "–";
+  document.getElementById("kAvg").textContent      = s.kpi.avg_score ?? "–";
+  clearKpiSkeletons();
+}
+
+/* ── Charts ─────────────────────────────────────── */
+function mkChart(id, cfg) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  const el = document.getElementById(id);
+  if (el) charts[id] = new Chart(el, cfg);
+}
+
+function renderCharts(summary, scores, history) {
+  const order = ["critique","eleve","modere","faible","non_evalue"];
+  const bucketLabels = order.filter(k => summary.buckets[k]);
+  mkChart("chartBuckets", {
+    type: "doughnut",
+    data: {
+      labels: bucketLabels.map(k => BUCKET_LABEL[k]),
+      datasets: [{ data: bucketLabels.map(k => summary.buckets[k]),
+        backgroundColor: bucketLabels.map(k => BUCKET_COLOR[k]), borderWidth: 0 }]
+    },
+    options: {
+      plugins: { legend: { position:"bottom", labels:{ boxWidth:9, padding:9 } } },
+      cutout: "66%"
+    }
+  });
+
+  const top = scores.filter(r => r.score != null).slice(0, 10);
+  mkChart("chartTop", {
+    type: "bar",
+    data: {
+      labels: top.map(r => r.cve),
+      datasets: [{ data: top.map(r => r.score),
+        backgroundColor: top.map(r => BUCKET_COLOR[r.bucket] + "cc"),
+        borderRadius: 3, borderSkipped: false }]
+    },
+    options: {
+      indexAxis: "y",
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { afterLabel: c => top[c.dataIndex].asset } }
+      },
+      scales: {
+        x: { max:120, grid:{ color:"#e6eaf1" }, ticks:{ color:"#6a7488" } },
+        y: { ticks:{ font:{ size:10 }, color:"#45516a" } }
+      }
+    }
+  });
+
+  mkChart("chartHistory", {
+    type: "line",
+    data: {
+      labels: history.map(h => {
+        const d = new Date(h.finished_at);
+        return d.toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+      }),
+      datasets: [
+        { label:"Score max", data: history.map(h => h.max_score),
+          borderColor:"#dc2626", backgroundColor:"rgba(220,38,38,.07)",
+          tension:.3, fill:true, pointRadius:3, pointHoverRadius:5 },
+        { label:"Score moyen", data: history.map(h => h.avg_score),
+          borderColor:"#c5a55a", tension:.3, pointRadius:3, pointHoverRadius:5 }
+      ]
+    },
+    options: {
+      plugins: { legend: { position:"bottom", labels:{ boxWidth:9, padding:9 } } },
+      scales: {
+        x: { ticks:{ color:"#6a7488", maxRotation:0, maxTicksLimit:5 }, grid:{ color:"#e6eaf1" } },
+        y: { min:0, max:120, grid:{ color:"#e6eaf1" }, ticks:{ color:"#6a7488" } }
+      }
+    }
+  });
+
+  hideChartSkeletons();
+}
+
+/* ── Asset filter ───────────────────────────────── */
+function populateAssetFilter() {
+  const sel = document.getElementById("assetFilter");
+  const current = sel.value;
+  const assets = [...new Set(allRows.map(r => r.asset))].sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = `<option value="">Tous les actifs</option>` +
+    assets.map(a => `<option value="${a}"${a === current ? " selected" : ""}>${a}</option>`).join("");
+}
+
+/* ── Table ──────────────────────────────────────── */
+function updateSortUI() {
+  ["asset","cve","cvss","score","exposure","score_exp"].forEach(k => {
+    const el = document.getElementById("si-" + k);
+    if (el) el.textContent = sortKey === k ? (sortDir === -1 ? " ↓" : " ↑") : "";
+  });
+}
+
+function sortBy(k) {
+  sortDir = sortKey === k ? -sortDir : -1;
+  sortKey = k;
+  updateSortUI();
+  renderTable();
+}
+
+function renderTable() {
+  const q  = document.getElementById("search").value.toLowerCase();
+  const bf = document.getElementById("bucketFilter").value;
+  const af = document.getElementById("assetFilter").value;
+  const cf = parseFloat(document.getElementById("cvssFilter").value) || 0;
+  let rows = allRows.filter(r =>
+    (!bf || r.bucket_profil === bf) &&
+    (!af || r.asset === af) &&
+    (!cf || (r.cvss != null && r.cvss >= cf)) &&
+    (!q  || [r.cve, r.package, r.wazuh_agent].join(" ").toLowerCase().includes(q))
+  );
+  rows.sort((a, b) => {
+    let va = a[sortKey], vb = b[sortKey];
+    if (va == null) return 1; if (vb == null) return -1;
+    return (typeof va === "number" ? va - vb : String(va).localeCompare(String(vb))) * sortDir;
+  });
+
+  const total = allRows.length, shown = Math.min(rows.length, 500);
+  document.getElementById("tableTitle").textContent =
+    rows.length < total
+      ? `Vulnérabilités — ${fmtNum(rows.length)} / ${fmtNum(total)}`
+      : `Vulnérabilités — ${fmtNum(total)}`;
+
+  const tb = document.getElementById("tbody");
+  tb.innerHTML = rows.slice(0, 500).map(r => {
+    const acts = r.parent_activities ? JSON.parse(r.parent_activities) : [];
+    return `<tr onclick="openAsset(${r.asset_id})">
+      <td>
+        <div class="asset-n">${r.asset}</div>
+        ${r.wazuh_agent ? `<div class="agent-n">${r.wazuh_agent}</div>` : ""}
+        ${acts.length ? `<div class="activity-n">↳ ${acts.join(", ")}</div>` : ""}
+      </td>
+      <td><a class="cve-id" href="https://nvd.nist.gov/vuln/detail/${r.cve}" target="_blank" rel="noopener" title="Voir la fiche officielle NVD">${r.cve}</a></td>
+      <td><span class="pkg">${r.package ?? "—"}</span></td>
+      <td class="td-r mono">${r.cvss ?? "—"}</td>
+      <td class="td-c">${cdiCell(r)}</td>
+      <td class="td-r mono ${scoreClass(r.score)}">${r.score ?? "—"}</td>
+      <td class="td-c mono" title="${r.exposure_label ?? ""}">${expoCell(r)}</td>
+      <td class="td-r mono ${scoreClass(r.score_exp, true)}">${r.score_exp ?? "—"}</td>
+      <td>${criticiteCell(r)}</td>
+    </tr>`;
+  }).join("");
+
+  const emptyMsg = document.getElementById("emptyMsg");
+  if (!rows.length) {
+    document.getElementById("emptyTitle").textContent =
+      allRows.length ? "Aucun résultat pour ce filtre" : "Aucune donnée en base";
+    document.getElementById("emptyDesc").textContent =
+      allRows.length
+        ? "Effacer la recherche ou modifier le filtre de criticité pour voir d'autres résultats."
+        : "Déclencher une collecte et vérifier que les agents Wazuh remontent des vulnérabilités.";
+    emptyMsg.style.display = "";
+  } else {
+    emptyMsg.style.display = "none";
+  }
+
+  const note = document.getElementById("tableNote");
+  if (rows.length > 500) {
+    note.textContent = `Affichage limité à 500 lignes sur ${fmtNum(rows.length)} — utiliser la recherche pour cibler.`;
+    note.style.display = "";
+  } else { note.style.display = "none"; }
+}
+
+/* ── Modal ──────────────────────────────────────── */
+async function openAsset(id) {
+  const d = await api(`/api/assets/${id}`);
+  const a = d.asset;
+
+  document.getElementById("mTitle").textContent = a.itop_name;
+  const acts = a.parent_activities ? JSON.parse(a.parent_activities) : [];
+  document.getElementById("mMeta").innerHTML =
+    `Agent : <strong style="color:var(--ink1)">${a.wazuh_agent ?? "aucun"}</strong> · ` +
+    `IP : <strong style="color:var(--ink1)">${a.ip ?? "—"}</strong> · ` +
+    `Hôte : <strong style="color:var(--ink1)">${a.host ?? "—"}</strong> · ` +
+    `Org : <strong style="color:var(--ink1)">${a.org ?? "—"}</strong>` +
+    (acts.length
+      ? ` · Activité : <strong style="color:var(--accent)">${acts.join(", ")}</strong>`
+      : "");
+
+  const ev = a.c != null && a.d != null && a.i != null;
+  if (ev) {
+    const cdi = a.c + a.d + a.i;
+    if (a.vm != null) {
+      const mult = (0.7 * cdi + 0.9 * a.vm).toFixed(1);
+      document.getElementById("mFormula").innerHTML =
+        `Actif → C:${a.c}+D:${a.d}+I:${a.i} = <span class="formula-hi">${cdi}</span> · ` +
+        `Valeur métier → VM = <span class="formula-hi">${a.vm}</span> · ` +
+        `Score = CVSS × (0,7×${cdi} + 0,9×${a.vm}) = CVSS × <span class="formula-hi">${mult}</span>`;
+    } else {
+      document.getElementById("mFormula").innerHTML =
+        `Actif → C:${a.c}+D:${a.d}+I:${a.i} = <span class="formula-hi">${cdi}</span> · ` +
+        `VM non évaluée → repli V1 : Score = CVSS × <span class="formula-hi">${cdi}</span>`;
+    }
+  } else {
+    document.getElementById("mFormula").innerHTML =
+      `<span style="color:var(--ink3)">⚠ Actif non évalué dans CISO Assistant — scores C/D/I manquants.</span>`;
+  }
+
+  const assetResolved = progressData?.resolved?.filter(r => r.asset === a.itop_name) ?? [];
+  const assetNew      = progressData?.new_cves?.filter(r => r.asset === a.itop_name) ?? [];
+  const newSet        = new Set(assetNew.map(r => r.cve));
+
+  const persistent = d.vulnerabilities.filter(v => !newSet.has(v.cve));
+  const newVulns   = d.vulnerabilities.filter(v => newSet.has(v.cve));
+
+  document.getElementById("tPersist").textContent   = `(${persistent.length})`;
+  document.getElementById("tResolved").textContent  = `(${assetResolved.length})`;
+  document.getElementById("tNew").textContent       = `(${newVulns.length})`;
+
+  document.getElementById("tab-persist").innerHTML  = buildVulnList(persistent, ev);
+  document.getElementById("tab-resolved").innerHTML = buildVulnList(assetResolved, false, true);
+  document.getElementById("tab-new").innerHTML      = buildVulnList(newVulns, ev, false, true);
+
+  switchTab("persist");
+  document.getElementById("modal").showModal();
+}
+
+function buildVulnList(vulns, evaluated, resolved = false, isNew = false) {
+  if (!vulns.length) {
+    return `<div class="empty-state"><strong>Aucune CVE dans cette catégorie</strong></div>`;
+  }
+  return vulns.map(v => `
+    <div class="vuln-row">
+      <div>
+        <div class="vuln-cve"><a href="https://nvd.nist.gov/vuln/detail/${v.cve}" target="_blank" rel="noopener" title="Voir la fiche officielle NVD" style="color:inherit;text-decoration:none">${v.cve} ↗</a></div>
+        ${v.package ? `<div class="vuln-pkg">${v.package}</div>` : ""}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span style="font-size:10px;color:var(--ink3)">CVSS ${v.cvss ?? "—"}</span>
+        ${v.score != null ? `<span class="vuln-score ${scoreClass(v.score)}">${v.score}</span>` : ""}
+        ${badge(v.bucket)}
+        ${resolved ? `<span class="tag-resolved">RÉSOLUE</span>` : ""}
+        ${isNew    ? `<span class="tag-new">NOUVELLE</span>`    : ""}
+      </div>
+    </div>`).join("");
+}
+
+function switchTab(name) {
+  document.querySelectorAll(".tab-btn").forEach(b =>
+    b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tab-panel").forEach(p =>
+    p.classList.toggle("active", p.id === "tab-" + name));
+}
+function closeModal() { document.getElementById("modal").close(); }
+
+/* ── Actions ────────────────────────────────────── */
+async function triggerCollect() {
+  const btn = document.getElementById("btnCollect");
+  btn.disabled = true; btn.textContent = "⟳ En cours…";
+  try {
+    await api("/api/collect", { method: "POST" });
+    const poll = setInterval(async () => {
+      const m = await api("/api/meta");
+      if (!m.collecting) {
+        clearInterval(poll);
+        btn.disabled = false; btn.textContent = "⟳ Collecter";
+        loadAll();
+      }
+    }, 2000);
+  } catch (e) { btn.disabled = false; btn.textContent = "⟳ Collecter"; }
+}
+
+async function pinBaseline() {
+  const btn = document.getElementById("btnBaseline");
+  btn.disabled = true; btn.textContent = "Enregistrement…";
+  try {
+    await api("/api/baseline", { method: "POST" });
+    await loadAll();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = "⚑ Figer comme référence";
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   V2 — MATRICE DE RISQUES DYNAMIQUE
+══════════════════════════════════════════════════ */
+let matrixData = null;
+
+/* ── View switch (vulns | matrix | watch) ───────── */
+function showView(view) {
+  document.getElementById('vulnsView').style.display  = view === 'vulns'  ? '' : 'none';
+  document.getElementById('matrixView').style.display = view === 'matrix' ? '' : 'none';
+  document.getElementById('watchView').style.display  = view === 'watch'  ? '' : 'none';
+  if (view === 'matrix') { loadMatrix(); loadTuning(); }
+  if (view === 'watch')  { loadWatch(); }
+  // Deep-link par hash (#matrix / #watch) sans recharger la page
+  const target = view === 'vulns' ? location.pathname + location.search : '#' + view;
+  if (('#' + view) !== location.hash && !(view === 'vulns' && !location.hash)) {
+    try { history.replaceState(null, '', target); } catch (e) { /* file:// */ }
+  }
+}
+function switchView(view) {
+  // Re-cliquer sur la vue déjà affichée ramène aux vulnérabilités
+  const el = document.getElementById(view + 'View');
+  if (el && el.style.display !== 'none' && view !== 'vulns') view = 'vulns';
+  showView(view);
+}
+
+/* ── Zone color ─────────────────────────────────── */
+function zoneStyle(v, g) {
+  const p = v * g;
+  if (p >= 9) return 'rgba(220,38,38,.14)';
+  if (p >= 6) return 'rgba(234,88,12,.12)';
+  if (p >= 3) return 'rgba(202,138,4,.10)';
+  if (p >= 2) return 'rgba(22,163,74,.08)';
+  return 'rgba(100,116,139,.06)';
+}
+
+function escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+/* ── Load & render matrix ───────────────────────── */
+async function loadMatrix() {
+  document.getElementById('matrixSubtitle').textContent = 'Chargement…';
+  try {
+    const data = await api('/api/risks');
+    matrixData = data;
+    renderMatrix(data);
+  } catch (e) {
+    document.getElementById('matrixSubtitle').textContent = 'Erreur — ' + e.message;
+  }
+}
+
+function renderMatrix(data) {
+  const scenarios = data.scenarios || [];
+  const runId     = data.run_id;
+  const sub       = document.getElementById('matrixSubtitle');
+
+  if (!scenarios.length) {
+    sub.textContent = 'Aucun scénario — lancer une collecte';
+    document.getElementById('matrixGrid').innerHTML =
+      '<div style="grid-column:span 4;text-align:center;padding:40px;color:var(--ink3)">Aucune donnée disponible</div>';
+    return;
+  }
+  sub.textContent = `${scenarios.length} scénario${scenarios.length > 1 ? 's' : ''} · Run #${runId ?? '—'}`;
+
+  // Group by current position
+  const cellMap   = {}; // "v,g" → [scenario]
+  const originMap = {}; // "v,g" → [scenario] (scenarios that have MOVED FROM this cell)
+
+  for (const s of scenarios) {
+    const lc = s.likelihood_current ?? s.likelihood_origin;
+    const gc = s.gravity_current    ?? s.gravity_origin;
+    if (lc && gc) (cellMap[`${lc},${gc}`] = cellMap[`${lc},${gc}`] || []).push(s);
+    const lo = s.likelihood_origin, go = s.gravity_origin;
+    if (lo && go && (lc !== lo || gc !== go))
+      (originMap[`${lo},${go}`] = originMap[`${lo},${go}`] || []).push(s);
+  }
+
+  let html = '';
+  for (let g = 4; g >= 1; g--) {
+    for (let v = 1; v <= 4; v++) {
+      const key    = `${v},${g}`;
+      const inCell = cellMap[key]   || [];
+      const ghosts = originMap[key] || [];
+
+      let bubbles = '';
+
+      // Ghost circles (origin of scenarios that have moved)
+      ghosts.forEach((s, i) => {
+        const ox = ghosts.length > 1 ? (i - (ghosts.length - 1) / 2) * 18 : 0;
+        bubbles += `<div style="position:absolute;width:22px;height:22px;border-radius:50%;
+          border:1.5px dashed rgba(77,96,120,.55);opacity:.6;pointer-events:none;
+          top:50%;left:calc(50% + ${ox}px);transform:translate(-50%,-50%)"
+          title="Origine EBIOS : ${escAttr(s.ref || s.name)}"></div>`;
+      });
+
+      // Current position bubbles
+      inCell.forEach((s, i) => {
+        const ox    = inCell.length > 1 ? (i - (inCell.length - 1) / 2) * 22 : 0;
+        const color = s.incomplete ? 'var(--ink3)' : s.vg_inferred ? '#b45309' : 'var(--accent)';
+        const label = escAttr((s.ref || s.name).substring(0, 5));
+        const floor = s.floor_applied
+          ? `<span style="position:absolute;top:-4px;right:-4px;font-size:8px;color:#7c3aed;line-height:1;pointer-events:none">✦</span>`
+          : '';
+        const tip   = escAttr((s.ref ? s.ref + ' — ' : '') + s.name +
+                       (s.vg_inferred ? ' (V/G inférés)' : '') +
+                       (s.floor_applied ? ' · plancher G2 actif' : ''));
+        bubbles += `<div onclick="openRiskModal('${s.id}')"
+             title="${tip}"
+             style="position:absolute;cursor:pointer;
+                    top:50%;left:calc(50% + ${ox}px);transform:translate(-50%,-50%);
+                    width:28px;height:28px;border-radius:50%;
+                    background:${color}22;border:2px solid ${color};
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:8px;font-weight:700;color:${color};
+                    z-index:10;user-select:none;transition:filter 100ms"
+             onmouseenter="this.style.filter='brightness(1.4)'"
+             onmouseleave="this.style.filter=''">${label}${floor}</div>`;
+      });
+
+      html += `<div class="matrix-cell" style="background:${zoneStyle(v, g)}">${bubbles}</div>`;
+    }
+  }
+  document.getElementById('matrixGrid').innerHTML = html;
+
+  // Inferred note
+  document.getElementById('matrixInferredNote').style.display =
+    scenarios.some(s => s.vg_inferred) ? '' : 'none';
+
+  // Incomplete list
+  const incomplete = scenarios.filter(s => s.incomplete);
+  const incEl = document.getElementById('matrixIncompleteList');
+  if (incomplete.length) {
+    incEl.style.display = '';
+    incEl.innerHTML = `<div style="padding:10px 14px;background:var(--s2);border:1px solid var(--border);border-radius:6px;font-size:11px">
+      <strong style="color:var(--ink2)">⚠ ${incomplete.length} scénario${incomplete.length > 1 ? 's' : ''} incomplet${incomplete.length > 1 ? 's' : ''} (G5) :</strong>
+      <div style="margin-top:6px;color:var(--ink3)">${incomplete.map(s => escAttr(s.ref || s.name)).join(' · ')}</div>
+    </div>`;
+  } else {
+    incEl.style.display = 'none';
+  }
+}
+
+/* ── Risk scenario modal (journal retiré de l'UI — reste dispo via l'API G1) ── */
+async function openRiskModal(id) {
+  try {
+    const scen = matrixData?.scenarios?.find(x => x.id === id);
+    if (!scen) return;
+
+    document.getElementById('rmTitle').textContent =
+      (scen.ref ? scen.ref + ' — ' : '') + scen.name;
+
+    document.getElementById('rmMeta').innerHTML =
+      `Actifs supports : <strong style="color:var(--ink1)">${
+        (scen?.assets?.join(', ') || 'aucun renseigné')
+      }</strong>` +
+      (scen?.vg_inferred
+        ? ` · <span style="color:#b45309;font-size:10px">V/G inférés</span>`
+        : '');
+
+    const lc = scen?.likelihood_current ?? '—';
+    const gc = scen?.gravity_current    ?? '—';
+    const lo = scen?.likelihood_origin  ?? '—';
+    const go = scen?.gravity_origin     ?? '—';
+
+    document.getElementById('rmPosition').innerHTML = `
+      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end">
+        <div>
+          <div style="font-size:9px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Origine EBIOS (G4)</div>
+          <div style="font-size:16px;font-weight:700">V=${lo} · G=${go}</div>
+        </div>
+        <div style="color:var(--ink3);font-size:18px;line-height:2;align-self:flex-end">→</div>
+        <div>
+          <div style="font-size:9px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Position courante</div>
+          <div style="font-size:16px;font-weight:700;color:var(--accent)">V=${lc} · G=${gc}</div>
+        </div>
+        ${scen?.floor_applied ? `<div>
+          <div style="font-size:9px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Plancher G2</div>
+          <div style="font-size:16px;font-weight:700;color:#7c3aed">V≥${scen.floor_value}</div>
+        </div>` : ''}
+        <div style="margin-left:auto;text-align:right">
+          <div style="font-size:9px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Effets actifs</div>
+          <div style="font-size:16px;font-weight:700;color:${(scen?.active_effects || 0) > 0 ? 'var(--crit)' : 'var(--ink2)'}">${scen?.active_effects ?? 0}</div>
+        </div>
+      </div>`;
+
+    document.getElementById('riskModal').showModal();
+  } catch (err) {
+    console.error('openRiskModal:', err);
+  }
+}
+
+function closeRiskModal() { document.getElementById('riskModal').close(); }
+
+/* ── Tuning display G3 ──────────────────────────── */
+async function loadTuning() {
+  const el = document.getElementById('tuningDisplay');
+  try {
+    const t     = await api('/api/tuning');
+    const lines = [];
+    const adm   = t.admission || {};
+    lines.push(`Admission SIEM  : niveau ≥ ${adm.siem_min_level ?? '?'}`);
+    lines.push(`Admission vulns : score   ≥ ${adm.vuln_min_score ?? '?'}`);
+    lines.push('');
+    lines.push('Effets :');
+    for (const [k, v] of Object.entries(t.effects || {})) {
+      const parts = [];
+      if (v.axis)          parts.push(`axe ${v.axis}`);
+      if (v.delta != null) parts.push(`Δ${v.delta >= 0 ? '+' : ''}${v.delta}`);
+      if (v.plateau_days)  parts.push(`plateau ${v.plateau_days}j`);
+      if (v.decay_days)    parts.push(`décroissance ${v.decay_days}j`);
+      if (v.rampup_days)   parts.push(`montée ${v.rampup_days}j`);
+      if (v.requires)      parts.push(`req: ${v.requires}`);
+      lines.push(`  ${k.padEnd(24)} ${parts.join(', ')}`);
+    }
+    lines.push('');
+    lines.push('Planchers G2 :');
+    for (const f of (t.floor || []))
+      lines.push(`  score ≥ ${f.vuln_score_gte.toString().padEnd(5)} → V_min = ${f.likelihood_min}`);
+    el.textContent = lines.join('\n');
+  } catch (e) {
+    el.textContent = 'Erreur de chargement : ' + e.message;
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   VEILLE CVE — NVD
+══════════════════════════════════════════════════ */
+let watchNews = [];
+
+const SEV_COLOR = { CRITICAL:'#dc2626', HIGH:'#ea580c', MEDIUM:'#ca8a04', LOW:'#16a34a' };
+const SEV_LABEL = { CRITICAL:'Critique', HIGH:'Élevée', MEDIUM:'Moyenne', LOW:'Faible' };
+
+async function loadWatch() {
+  try {
+    const [status, news] = await Promise.all([
+      api('/api/watch/status'), api('/api/watch?limit=500')
+    ]);
+
+    // Sous-titre + badge
+    document.getElementById('watchSubtitle').textContent =
+      `${status.items.length} abonnements · poll toutes les ${status.interval_min} min · mode delta NVD` +
+      (status.watching ? ' · cycle en cours…' : '');
+    updateWatchBadge(news.unseen);
+
+    // Tableau abonnements
+    document.getElementById('watchItemCount').textContent = status.items.length;
+    document.getElementById('watchStatusBody').innerHTML = status.items.map(it => `
+      <tr style="cursor:default">
+        <td><span class="asset-n">${it.asset_name}</span></td>
+        <td><span class="mono" style="color:var(--ink3);font-size:10px">${it.query_type}: ${it.query_value}</span></td>
+        <td style="font-size:11px;color:var(--ink2)">${it.last_checked ? fmtDate(it.last_checked) : '—'}</td>
+        <td>${it.last_status === 'ok'
+              ? '<span class="chip chip-ok">OK</span>'
+              : `<span class="chip chip-err" title="${(it.last_status||'').replace(/"/g,'&quot;')}">erreur</span>`}</td>
+        <td class="td-r mono">${it.news_count ?? 0}</td>
+        <td class="td-r mono" style="color:${it.unseen ? 'var(--crit)' : 'var(--ink3)'}">${it.unseen ?? 0}</td>
+      </tr>`).join('') ||
+      '<tr><td colspan="6" style="text-align:center;color:var(--ink3);padding:20px">Aucun abonnement — lancer la veille pour initialiser watch.yaml</td></tr>';
+
+    watchNews = news.news;
+
+    // Filtre actifs
+    const sel = document.getElementById('watchAssetFilter');
+    const current = sel.value;
+    const assets = [...new Set(watchNews.map(n => n.asset_name))].sort();
+    sel.innerHTML = '<option value="">Tous les actifs</option>' +
+      assets.map(a => `<option value="${a}"${a === current ? ' selected' : ''}>${a}</option>`).join('');
+
+    renderWatchNews();
+  } catch (e) {
+    document.getElementById('watchSubtitle').textContent = 'Erreur — ' + e.message;
+  }
+}
+
+function updateWatchBadge(unseen) {
+  const b = document.getElementById('watchBadge');
+  if (unseen > 0) { b.textContent = unseen > 99 ? '99+' : unseen; b.style.display = ''; }
+  else b.style.display = 'none';
+}
+
+function renderWatchNews() {
+  const af = document.getElementById('watchAssetFilter').value;
+  const sf = document.getElementById('watchSevFilter').value;
+  const uo = document.getElementById('watchUnseenOnly').checked;
+
+  const rows = watchNews.filter(n =>
+    (!af || n.asset_name === af) &&
+    (!sf || n.severity === sf) &&
+    (!uo || !n.seen)
+  );
+
+  document.getElementById('watchNewsTitle').textContent =
+    `Actualité CVE — ${rows.length}${rows.length !== watchNews.length ? ' / ' + watchNews.length : ''}`;
+
+  const list = document.getElementById('watchNewsList');
+  const empty = document.getElementById('watchEmpty');
+  if (!rows.length) { list.innerHTML = ''; empty.style.display = ''; return; }
+  empty.style.display = 'none';
+
+  list.innerHTML = rows.map(n => {
+    const sevC = SEV_COLOR[n.severity] || 'var(--muted)';
+    return `<div class="vuln-row" style="${n.seen ? 'opacity:.55' : ''}">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <a href="${n.url}" target="_blank" rel="noopener" class="vuln-cve" style="text-decoration:none">${n.cve} ↗</a>
+          <span class="badge" style="background:${sevC}22;color:${sevC}">${SEV_LABEL[n.severity] || n.severity || '—'}</span>
+          ${n.cvss != null ? `<span class="mono" style="font-size:10px;color:var(--ink2)">CVSS ${n.cvss}</span>` : ''}
+          <span style="font-size:10px;color:var(--ink3)">${n.asset_name}</span>
+          <span style="font-size:10px;color:var(--ink3)">· ${n.published_at ? fmtDate(n.published_at) : '—'}</span>
+        </div>
+        <div style="font-size:11px;color:var(--ink2);margin-top:3px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${(n.summary || '').replace(/</g,'&lt;')}</div>
+      </div>
+      ${!n.seen ? `<button class="btn btn-secondary" style="flex-shrink:0;font-size:10px;padding:3px 8px" onclick="markSeen(${n.id})">✓ Lu</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function markSeen(id) {
+  await api(`/api/watch/seen?news_id=${id}`, { method: 'POST' });
+  const n = watchNews.find(x => x.id === id);
+  if (n) n.seen = 1;
+  updateWatchBadge(watchNews.filter(x => !x.seen).length);
+  renderWatchNews();
+}
+
+async function markAllSeen() {
+  await api('/api/watch/seen', { method: 'POST' });
+  watchNews.forEach(n => n.seen = 1);
+  updateWatchBadge(0);
+  renderWatchNews();
+}
+
+async function triggerWatch() {
+  const btn = document.getElementById('btnWatchRun');
+  btn.disabled = true; btn.textContent = '⟳ Veille en cours…';
+  try {
+    await api('/api/watch/run', { method: 'POST' });
+    const poll = setInterval(async () => {
+      const s = await api('/api/watch/status');
+      if (!s.watching) {
+        clearInterval(poll);
+        btn.disabled = false; btn.textContent = '⟳ Lancer la veille';
+        loadWatch();
+      }
+    }, 3000);
+  } catch (e) { btn.disabled = false; btn.textContent = '⟳ Lancer la veille'; }
+}
+
+/* Badge non-lues rafraîchi en tâche de fond */
+async function refreshWatchBadge() {
+  try {
+    const r = await api('/api/watch?limit=1&unseen_only=true');
+    updateWatchBadge(r.unseen);
+  } catch (e) { /* silencieux */ }
+}
+
+/* ══════════════════════════════════════════════════
+   MODE DÉMO
+══════════════════════════════════════════════════ */
+let demoScenarioId = null;
+let demoAlertTimer = null;
+
+async function toggleDemo() {
+  const p = document.getElementById('demoPanel');
+  p.classList.toggle('open');
+  if (p.classList.contains('open')) await demoPopulate();
+}
+
+async function demoPopulate() {
+  const sel = document.getElementById('demoScenario');
+  try {
+    const d = await api('/api/risks');
+    const scenarios = (d.scenarios || []);
+    const withAssets = scenarios.filter(s => s.assets && s.assets.length);
+    const list = withAssets.length ? withAssets : scenarios;
+    sel.innerHTML = list.length
+      ? list.map(s =>
+          `<option value="${s.id}">${escAttr((s.ref ? s.ref + ' — ' : '') + s.name.substring(0, 42))}</option>`
+        ).join('')
+      : '<option value="">Aucun scénario — lancer une collecte</option>';
+  } catch (e) {
+    sel.innerHTML = '<option value="">Erreur de chargement</option>';
+  }
+}
+
+function demoShowAlert(html, ok = false, autoHideMs = 0) {
+  const a = document.getElementById('demoAlert');
+  clearTimeout(demoAlertTimer);
+  a.innerHTML = html;
+  a.className = ok ? 'ok' : '';
+  a.style.display = 'block';
+  if (autoHideMs) demoAlertTimer = setTimeout(() => { a.style.display = 'none'; }, autoHideMs);
+}
+
+async function demoInject() {
+  const sid = document.getElementById('demoScenario').value;
+  try {
+    const r = await api('/api/demo/inject' + (sid ? `?scenario_id=${sid}` : ''), { method: 'POST' });
+    demoScenarioId = r.scenario_id;
+    demoShowAlert(
+      `🚨 <strong>${r.cve}</strong> (CVSS 9.8, critique) détectée sur <strong>${escAttr(r.asset)}</strong>` +
+      ` — scénario <strong>${escAttr(r.ref || r.name)}</strong> : vraisemblance ↑` +
+      ` <span style="opacity:.75;font-weight:400">· cliquer pour voir la matrice</span>`
+    );
+    refreshWatchBadge();
+    if (document.getElementById('matrixView').style.display !== 'none') loadMatrix();
+    if (document.getElementById('watchView').style.display  !== 'none') loadWatch();
+  } catch (e) {
+    demoShowAlert('⚠ ' + (e.message.includes('Aucun') ? 'Aucun scénario en base — lancer une collecte d\'abord' : e.message), false, 6000);
+  }
+}
+
+async function demoAlertClick() {
+  const a = document.getElementById('demoAlert');
+  if (a.classList.contains('ok')) { a.style.display = 'none'; return; }
+  showView('matrix');
+  if (demoScenarioId) {
+    await loadMatrix();               // s'assurer que matrixData est peuplé
+    openRiskModal(demoScenarioId);
+  }
+}
+
+async function demoPatch() {
+  const r = await api('/api/demo/patch', { method: 'POST' });
+  if (!r.ok) { demoShowAlert('⚠ ' + (r.reason || 'rien à corriger'), false, 4000); return; }
+  demoShowAlert(
+    `✓ Correctif déployé — disparition <strong>confirmée par le scan</strong>, le scénario redescend` +
+    ` <span style="opacity:.75;font-weight:400">(le système croit le scan, pas le ticket)</span>`,
+    true, 10000
+  );
+  refreshWatchBadge();
+  if (document.getElementById('matrixView').style.display !== 'none') loadMatrix();
+  if (document.getElementById('watchView').style.display  !== 'none') loadWatch();
+}
+
+async function demoReset() {
+  await api('/api/demo/reset', { method: 'POST' });
+  document.getElementById('demoAlert').style.display = 'none';
+  demoScenarioId = null;
+  refreshWatchBadge();
+  if (document.getElementById('matrixView').style.display !== 'none') loadMatrix();
+  if (document.getElementById('watchView').style.display  !== 'none') loadWatch();
+}
+
+/* Simulateur « et si ? » — formule V1.1 en direct */
+function wiUpdate() {
+  const cvss = parseFloat(document.getElementById('wiCvss').value);
+  const cdi  = parseInt(document.getElementById('wiCdi').value, 10);
+  const vm   = parseFloat(document.getElementById('wiVm').value);
+  document.getElementById('wiCvssV').textContent = cvss.toFixed(1);
+  document.getElementById('wiCdiV').textContent  = cdi;
+  document.getElementById('wiVmV').textContent   = vm;
+  const score = Math.round(cvss * (0.7 * cdi + 0.9 * vm) * 10) / 10;
+  let b = 'faible';
+  if (score >= 60) b = 'critique'; else if (score >= 40) b = 'eleve'; else if (score >= 20) b = 'modere';
+  document.getElementById('wiOut').innerHTML =
+    `Score = <span style="color:${BUCKET_COLOR[b]}">${score}</span> ${badge(b)}`;
+}
+
+/* ── Bootstrap ──────────────────────────────────── */
+updateSortUI();
+loadAll();
+refreshWatchBadge();
+wiUpdate();
+setInterval(loadAll, 60000);
+setInterval(refreshWatchBadge, 60000);
+
+/* Deep-link initial + navigation arrière/avant du navigateur */
+(function initViewFromHash() {
+  const v = (location.hash || '').replace('#', '');
+  if (v === 'matrix' || v === 'watch') showView(v);
+})();
+window.addEventListener('hashchange', () => {
+  const v = (location.hash || '').replace('#', '') || 'vulns';
+  showView(['matrix', 'watch', 'vulns'].includes(v) ? v : 'vulns');
+});
+</script>
+</body>
+</html>

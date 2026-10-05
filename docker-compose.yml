@@ -1,0 +1,16 @@
+# Déploiement Portainer / VM Proxmox : docker compose up -d
+services:
+  dashboard:
+    build: .
+    container_name: poc-scoring-dashboard
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - DB_PATH=/app/data/poc.sqlite3
+    volumes:
+      - poc_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  poc_data:

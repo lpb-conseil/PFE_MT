@@ -1,0 +1,34 @@
+# Profils de seuils de criticite — commutables a chaud depuis le dashboard.
+#
+# Constat de mesure (run 75, 11 516 lignes scorees) : le multiplicateur
+# (0,7 x (C+D+I) + 0,9 x VM) vaut 8 a 12 sur le perimetre instrumente, tous les
+# actifs evalues etant des machines d'infrastructure critiques. Le score vaut
+# donc environ CVSS x 9,5 et la mediane tombe a 59, soit le seuil "critique"
+# lui-meme : 46 % des lignes sont classees critiques.
+#
+# Les deux profils sont defendables, mais ils ne repondent pas a la meme
+# question. Voir docs/note_seuils.md.
+
+actif: rapport        # profil par defaut au demarrage
+
+profils:
+
+  rapport:
+    label: "Absolu (rapport)"
+    type: absolu
+    seuils: {critique: 60, eleve: 40, modere: 20}
+    justification: >
+      Seuils du memoire, cales sur la borne theorique du score (120). Lecture
+      absolue : un score exprime une gravite intrinseque, comparable d'un
+      perimetre a l'autre et dans le temps. C'est la reference figee du rapport.
+
+  percentile:
+    label: "Relatif au parc (percentiles)"
+    type: percentile
+    seuils: {critique: 95, eleve: 75, modere: 50}
+    justification: >
+      Seuils recalcules a chaque cycle sur la distribution reelle des scores.
+      Lecture operationnelle : "critique" designe les 5 % a traiter en premier,
+      ce qui produit une file de travail finie. Contrepartie assumee : les
+      seuils bougent avec le parc, donc deux cycles ne sont pas directement
+      comparables et une remediation massive fait remonter d'autres lignes.

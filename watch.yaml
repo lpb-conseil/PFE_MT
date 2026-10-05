@@ -1,0 +1,85 @@
+# ═══════════════════════════════════════════════════════════════════
+# watch.yaml — Catalogue de veille CVE (NVD) sur les actifs supports
+# ═══════════════════════════════════════════════════════════════════
+#
+# Chaque entrée relie un actif CISO Assistant à une requête NVD :
+#   - cpe      : préfixe CPE 2.3 (virtualMatchString) — précis, à privilégier
+#   - keywords : recherche plein-texte NVD — fallback quand pas de CPE référencé
+#   - min_cvss : seuil local d'admission (défaut : global.min_cvss)
+#
+# Scalabilité : ajouter un nouveau service = ajouter UNE entrée ici.
+# Aucun code à modifier (garde-fou G3 : paramètres hors code).
+#
+# Mode delta : le collecteur interroge NVD avec lastModStartDate = dernier
+# passage → seules les CVE nouvelles/modifiées sont retournées ("subscription").
+# Quota NVD sans clé API : 5 requêtes / 30 s → pause 6 s entre requêtes.
+
+global:
+  min_cvss: 7.0            # en-dessous, la news est stockée mais pas d'effet risque
+  first_run_days: 90       # profondeur d'historique au premier passage (max 120)
+  create_risk_events: true # alimente la matrice V2 (risk_events source "nvd")
+
+items:
+  - asset: "Bitwarden (gestionnaire de mots de passe)"
+    cpe: "cpe:2.3:a:bitwarden:bitwarden"
+    min_cvss: 6.0          # coffre-fort : seuil abaissé
+
+  - asset: "Nextcloud (stockage auto-hébergé)"
+    cpe: "cpe:2.3:a:nextcloud:nextcloud_server"
+
+  - asset: "3CX (téléphonie VoIP)"
+    cpe: "cpe:2.3:a:3cx:3cx"
+
+  - asset: "Axonaut (ERP/CRM)"
+    keywords: "Axonaut"
+
+  - asset: "Miradore (MDM mobile)"
+    keywords: "Miradore"
+
+  - asset: "Intune (MDM/gestion de parc)"
+    cpe: "cpe:2.3:a:microsoft:intune"
+
+  - asset: "Microsoft Teams"
+    cpe: "cpe:2.3:a:microsoft:teams"
+
+  - asset: "SharePoint / Teams (M365 collaboration)"
+    cpe: "cpe:2.3:a:microsoft:sharepoint_server"
+
+  - asset: "Stelogy (supervision/monitoring)"
+    keywords: "Stelogy"
+
+  - asset: "TopDesk (ITSM helpdesk)"
+    cpe: "cpe:2.3:a:topdesk:topdesk"
+
+  - asset: "CISO Assistant (GRC - LPB Conseil)"
+    cpe: "cpe:2.3:a:intuitem:ciso_assistant"
+
+  - asset: "BlueMind (messagerie collaborative)"
+    cpe: "cpe:2.3:a:blue_mind:bluemind"
+
+  - asset: "Sites web vitrines (Netlify)"
+    keywords: "Netlify"
+
+  # ── Produits portés par les VMs instrumentées (complément Wazuh) ──
+  - asset: "LPC-VM-OPNSENSE"
+    cpe: "cpe:2.3:a:opnsense:opnsense"
+
+  - asset: "LPC-VM-ZABBIX"
+    cpe: "cpe:2.3:a:zabbix:zabbix"
+
+  - asset: "lpb-srv-portainer-azure"
+    cpe: "cpe:2.3:a:portainer:portainer"
+
+  # ══ Propositions générées le 2026-07-16 11:38 UTC — generate_watch.py ══
+  # Valider : vérifier le CPE puis retirer 'pending_validation'.
+  # Tant que le flag est présent, l'entrée est IGNORÉE par la veille (G5).
+  - asset: "lpb-srv-admin-rdp"
+    cpe: "cpe:2.3:a:cisco:duo_authentication_for_windows_logon_and_rdp"
+    pending_validation: true
+    # confiance: 0.5
+  - asset: "LPC-VM-BASTIO"
+    cpe: "cpe:2.3:a:wallix:bastion_access_manager"
+    pending_validation: true
+    # confiance: 1.0
+    # alternative: cpe:2.3:a:wallix:bastion (1.0)
+    # alternative: cpe:2.3:a:ovhcloud:the_bastion (1.0)

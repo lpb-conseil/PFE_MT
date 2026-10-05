@@ -1,0 +1,72 @@
+# risk_tuning.yaml — Paramètres métier du moteur de risques dynamique (V2)
+# ─────────────────────────────────────────────────────────────────────────────
+# Calibrés par Fadel Ghamlouche / Alexandre Chauvie.
+# Toute modification est une décision GRC → tracer dans JOURNAL.md.
+# Ne jamais mettre ces valeurs en dur dans risk_engine.py (G3).
+# ─────────────────────────────────────────────────────────────────────────────
+
+admission:
+  siem_min_level: 12       # niveau Wazuh minimal pour créer un risk_event
+  vuln_min_score: 60       # score métier minimal (tranche "critique" actuelle)
+
+effects:
+  new_vuln:
+    axis: likelihood
+    delta: 1
+    plateau_days: 7
+    decay_days: 30
+  siem_alert:
+    axis: likelihood
+    delta: 1
+    plateau_days: 7
+    decay_days: 30
+  watch_vuln:                # CVE remontée par la veille NVD (actifs SaaS/produits)
+    axis: likelihood
+    delta: 1
+    plateau_days: 14         # plus long : pas de scan direct pour confirmer le patch éditeur
+    decay_days: 45
+  control_preventive:
+    axis: likelihood
+    delta: -1
+    rampup_days: 28
+  control_corrective:
+    axis: likelihood
+    delta: -1
+    requires: remediation_verified   # N'est appliqué que si le scan confirme la disparition des CVEs (G-boucle)
+  control_recovery:
+    axis: gravity
+    delta: -1
+    rampup_days: 28
+  incident_closed:
+    axis: likelihood
+    delta: 0
+    decay_days: 14
+
+# Plancher G2 : vraisemblance minimale selon score vuln max des actifs supports
+floor:
+  - {vuln_score_gte: 100, likelihood_min: 3}
+  - {vuln_score_gte: 60,  likelihood_min: 2}
+
+# ─── P2 — Catégorisation fonctionnelle des mesures ───────────────────────────
+# La catégorie "CSF Function" n'est pas renseignée dans CISO Assistant (audit P2).
+# Déclaré ici manuellement jusqu'à saisie dans CISO.
+# Types : preventive | corrective | recovery | detective (detective = ignoré par le moteur)
+control_categories:
+  "M-01 — MFA obligatoire sur tous les services exposés et critiques": preventive
+  "M-02 — Patch management mensuel des services exposés (OPNsense, Bastion, VMs)": corrective
+  "M-03 — Journalisation étendue Wazuh — alertes exfiltrations et accès anormaux": detective
+  "M-04 — Segmentation réseau Proxmox + durcissement accès distant (Zero Trust)": preventive
+  "M-05 — Plan de sauvegarde 3-2-1 et PRA anti-ransomware": recovery
+  "M-06 — Politique de gestion des accès et révocation systématique (offboarding)": preventive
+  "M-07 — Sensibilisation collaborateurs — phishing et manipulation des données clients": preventive
+  "M-08 — Classification et partage sécurisé des données clients (3 niveaux)": preventive
+
+# ─── Correspondance niveau textuel CISO → V/G ────────────────────────────────
+# Utilisé quand likelihood_origin/gravity_origin ne sont pas explicitement saisis
+# dans CISO Assistant (vg_inferred=1 dans risk_scenarios).
+# Valeurs à valider avec Fadel — décision 5 du cadrage.
+level_to_vg:
+  critical: {v: 4, g: 4}
+  high:     {v: 3, g: 3}
+  medium:   {v: 2, g: 2}
+  low:      {v: 1, g: 2}

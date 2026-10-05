@@ -1,0 +1,42 @@
+# Facteur d'exposition réseau (E) — V1.2
+#
+# Score V1.2 = CVSS x (W_CDI x (C+D+I) + W_VM x VM) x E
+#
+# Principe (prolongement du garde-fou G5) : E = 1.0 quand l'exposition est
+# inconnue. Dans ce cas la formule redonne EXACTEMENT la V1.1. Une donnee
+# manquante est neutre, jamais comblee arbitrairement.
+#
+# Aucun coefficient en dur dans le code (garde-fou G3) : ce fichier est la
+# seule source de verite des paliers. Calibrage a valider avec Fadel
+# Ghamlouche et Alexandre Chauvie.
+
+default: 1.0          # exposition inconnue -> neutre -> V1.1 exacte
+
+tiers:
+  cloud_exposed:
+    factor: 1.25
+    label: "Hebergement cloud, exposition Internet directe"
+  nomade:
+    factor: 1.20
+    label: "Poste nomade, change de reseau, hors perimetre firewall"
+  bastion:
+    factor: 1.15
+    label: "Point d'entree d'administration, expose par conception"
+  lan_filtre:
+    factor: 0.90
+    label: "LAN interne derriere firewall, non routable depuis Internet"
+  isole:
+    factor: 0.75
+    label: "Sous-reseau isole, aucun routage sortant"
+
+# Regles par sous-reseau (evaluees dans l'ordre, premier match retenu)
+subnets:
+  - cidr: "192.168.50.0/24"
+    tier: bastion
+  - cidr: "192.168.10.0/24"
+    tier: lan_filtre
+
+# Surcharges nominatives (priorite sur les sous-reseaux).
+# Utilisees pour les actifs sans IP en base (cloud) ou cas particuliers.
+assets:
+  lpb-srv-portainer-azure: cloud_exposed

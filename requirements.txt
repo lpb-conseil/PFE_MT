@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+apscheduler>=3.10,<4
+requests>=2.31
+pyyaml>=6.0
+python-dotenv>=1.0
